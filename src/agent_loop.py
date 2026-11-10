@@ -73,6 +73,7 @@ from src.tool_capabilities import (
     blocked_tool_result,
     capabilities_for_action,
     capabilities_for_tool,
+    host_reads_unconfined,
     messages_contain_external_untrusted_context,
     tool_result_is_successful,
     tool_result_should_arm_gate,
@@ -21454,6 +21455,7 @@ async def stream_agent_loop(
         ),
         approval_gate_bypassed=_tool_approval_gate_bypassed(exact_approval),
         delegated_credential=bool(delegated_credential),
+        reads_unconfined=host_reads_unconfined(),
     )
     _has_tui_host_bridge = _tui_host_bridge_is_usable(client_runtime_context)
     if (

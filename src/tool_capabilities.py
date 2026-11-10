@@ -1068,6 +1068,15 @@ def _is_authorized_local_mcp_continuation(
     return has_local_tool
 
 
+UNCONFINED_READS_REASON = "code execution can read files outside the workspace on this host"
+
+
+def host_reads_unconfined() -> bool:
+    """True when contained commands on this host can read outside the workspace."""
+    from src import containment
+    return containment.FILESYSTEM not in containment.DEFAULT_REQUIRED
+
+
 @dataclass
 class ToolRunSecurityContext:
     """Server-owned integrity state for one agent run."""
@@ -1089,6 +1098,10 @@ class ToolRunSecurityContext:
     delegated_credential: bool = False
     explicit_untrusted_seen: bool = False
     prompt_external_untrusted_seen: bool = False
+    # Set on a host whose execution boundary confines writes but not reads.
+    # Code execution then asks from the first call, not only after untrusted
+    # content entered the run. Approvals and unattended tools lift it as usual.
+    reads_unconfined: bool = False
 
     def __post_init__(self) -> None:
         if self.external_untrusted_context_seen and (
@@ -1154,6 +1167,10 @@ class ToolRunSecurityContext:
         if isinstance(tool_name, str) and tool_name in self.unattended_tools:
             return ToolGateDecision(True)
         if not self.external_untrusted_context_seen:
+            if self.reads_unconfined and (
+                ToolEffect.EXECUTE_CODE in capabilities_for_action(tool_name, content).effects
+            ):
+                return ToolGateDecision(False, UNCONFINED_READS_REASON)
             return ToolGateDecision(True)
 
         # Scoped continuation exception for explicitly declared local MCP tools:

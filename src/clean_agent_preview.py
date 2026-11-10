@@ -28,7 +28,12 @@ from src.context_compactor import (
 from src.agent_runtime.runtime_selection import COMPACT_PREVIEW_MODE
 from src import agent_runs
 from src.agent_evidence import command_has_mutation_effect, workspace_artifact_is_usable
-from src.tool_capabilities import ToolEffect, ToolRunSecurityContext, capabilities_for_action
+from src.tool_capabilities import (
+    ToolEffect,
+    ToolRunSecurityContext,
+    capabilities_for_action,
+    host_reads_unconfined,
+)
 from src.tool_execution import execute_tool_block
 from src.tool_schemas import (
     function_call_to_tool_block,
@@ -5870,6 +5875,7 @@ async def stream_preview(*, endpoint_url, model, messages, headers, turn_contrac
         unattended_tools=(
             NATIVE_WORKSPACE_TOOLS if native_workspace_enabled else frozenset()
         ),
+        reads_unconfined=host_reads_unconfined(),
     )
     security.observe_messages(messages)
     executions, policy_decisions, calls, first_token = [], [], 0, None
