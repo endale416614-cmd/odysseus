@@ -237,6 +237,10 @@ def open_browser(url):
 
 
 if __name__ == "__main__":
+    # An update that was downloaded and checked earlier installs before anything else starts.
+    from src import updater
+    if updater.apply_staged():
+        os._exit(0)  # the installer replaces the program files and starts the app again
     import uvicorn
     if getattr(sys, 'frozen', False):
         # The packaged app must not download the browser MCP package without the user's consent, and its
@@ -257,5 +261,7 @@ if __name__ == "__main__":
         threading.Thread(target=open_browser, args=(url,), daemon=True).start()
         # Start system tray manager thread
         threading.Thread(target=setup_system_tray, args=(url,), daemon=True).start()
+        # Look for a newer release and download it; the next start installs it.
+        threading.Thread(target=updater.stage_latest, daemon=True).start()
 
     uvicorn.run(app, host=bind_host, port=bind_port, log_level="info")

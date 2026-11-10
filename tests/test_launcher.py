@@ -17,6 +17,12 @@ def test_frozen_multiprocessing_bootstrap_precedes_gui_and_app_imports():
     assert freeze < splash < app_import
 
 
+def test_staged_update_installs_before_the_app_is_imported():
+    source = Path("launcher.py").read_text(encoding="utf-8")
+
+    assert source.index("updater.apply_staged()") < source.index("from app import app")
+
+
 def test_null_writer():
     writer = NullWriter()
     # writing and flushing should not raise any exceptions

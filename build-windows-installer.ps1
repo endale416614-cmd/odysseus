@@ -5,6 +5,8 @@
   Output:
     dist\installer\Odysseus-Setup-<version>.exe
     dist\installer\Odysseus-Setup-<version>.exe.sha256
+    dist\installer\update.json and update.json.sig (only with a release signing key,
+    see scripts\release_signing.py)
 
   Requires Inno Setup 6: https://jrsoftware.org/isdl.php
 
@@ -75,7 +77,25 @@ if (-not (Test-Path $setupExe)) { Fail "Installer not produced: $setupExe" }
 $hash = (Get-FileHash -Algorithm SHA256 -Path $setupExe).Hash.ToLower()
 Set-Content -Path ($setupExe + ".sha256") -Value ($hash + "  " + (Split-Path $setupExe -Leaf)) -Encoding ascii
 
+Write-Step "Signing the update manifest"
+$releaseMatch = [regex]::Match($constants, '(?m)^APP_RELEASE\s*=\s*(\d+)')
+if (-not $releaseMatch.Success) { Fail "APP_RELEASE not found in src\constants.py." }
+$release = $releaseMatch.Groups[1].Value
+$keyFile = $env:ODYSSEUS_RELEASE_KEY_FILE
+if (-not $keyFile) { $keyFile = Join-Path $env:APPDATA "Odysseus-Release\update-signing.key" }
+if (Test-Path $keyFile) {
+    $py = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
+    if (-not (Test-Path $py)) { $py = "python" }
+    & $py (Join-Path $PSScriptRoot "scripts\release_signing.py") sign $setupExe --version $version --release $release
+    if ($LASTEXITCODE -ne 0) { Fail "Signing the update manifest failed." }
+} else {
+    # Installed copies only accept an update whose manifest carries a release key signature.
+    Write-Host "No release signing key on this computer: update.json was not written." -ForegroundColor Yellow
+    Write-Host "This build can be installed by hand but is not delivered as an automatic update." -ForegroundColor Yellow
+}
+
 Write-Host ""
 Write-Host "Installer build complete." -ForegroundColor Green
 Write-Host ("Installer: " + $setupExe) -ForegroundColor Green
 Write-Host ("SHA-256:   " + $hash) -ForegroundColor Green
+Write-Host ("Release tag for automatic updates: v" + $version + "-setup." + $release) -ForegroundColor Green

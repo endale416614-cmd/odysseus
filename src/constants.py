@@ -6,6 +6,9 @@ import subprocess
 from src.runtime_paths import get_app_root, get_default_data_dir
 
 APP_VERSION = "1.0.3"
+# Counts the installer releases of this version. The updater installs a release
+# only when the (version, release) pair in its signed manifest is higher.
+APP_RELEASE = 2
 BUILTIN_SKILLS_DIR = os.path.join(get_app_root(), "resources", "skills")
 # Identifies the private maintainer-preview build without changing the public
 # application semver used by release and readiness checks. Keep the API/UI
@@ -101,6 +104,9 @@ GALLERY_DIR = os.path.join(DATA_DIR, "gallery")
 GALLERY_UPLOADS_DIR = os.path.join(DATA_DIR, "gallery_uploads")
 MEMORY_VECTORS_DIR = os.path.join(DATA_DIR, "memory_vectors")
 SETUP_LOG_FILE = os.path.join(DATA_DIR, "setup.log")
+# A downloaded, checked update waits here until the next start installs it.
+UPDATES_DIR = os.path.join(DATA_DIR, "updates")
+UPDATE_LOG_FILE = os.path.join(DATA_DIR, "update.log")
 # Browser cache of the packaged app (set in launcher.py); a source install keeps its cache under the app root.
 BROWSER_MCP_CACHE_DIR = os.path.join(DATA_DIR, "local", "playwright-mcp-cache")
 

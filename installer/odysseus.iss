@@ -48,6 +48,8 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; IconFilename:
 
 [Run]
 Filename: "{app}\{#AppExeName}"; Description: "Start Odysseus"; Flags: postinstall nowait skipifsilent
+; An automatic update runs this installer with /RELAUNCH=1: the app closed itself for the update and is started again.
+Filename: "{app}\{#AppExeName}"; Flags: nowait; Check: RelaunchRequested
 
 [UninstallRun]
 ; Stop this copy of the app and its helper processes so their files can be removed.
@@ -69,3 +71,9 @@ Type: dirifempty; Name: "{app}\_internal\data"
 ; These two cover a folder that was already there, for example left by an earlier uninstall.
 Type: dirifempty; Name: "{app}\_internal"
 Type: dirifempty; Name: "{app}"
+
+[Code]
+function RelaunchRequested: Boolean;
+begin
+  Result := ExpandConstant('{param:RELAUNCH|0}') = '1';
+end;

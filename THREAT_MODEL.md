@@ -80,6 +80,16 @@ Three exemptions apply even when the gate is on, all deliberate:
 - `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer` everywhere.
 - **CSP:** nonce-based `script-src 'self' 'nonce-{nonce}' https://cdn.jsdelivr.net`. `style-src 'unsafe-inline'` is intentionally kept — `static/index.html` ships inline `<style>` blocks and JS modules set `style=""` attributes at runtime. Inline styles do not execute script so the risk is visual-only. Removing this requires templating the HTML files and auditing all JS-set style attributes.
 
+## Application Updates
+
+Only the packaged Windows app updates itself (`src/updater.py`); `ODYSSEUS_AUTO_UPDATE=0` switches it off. While the app runs it reads `update.json` from the newest full release of the release repository, and at the next start it runs the installer that file names.
+
+- **Trust:** the manifest must carry an Ed25519 signature that matches a public key built into the app (`PUBLIC_KEYS`). The release host, the network and the download folder are untrusted. The private key stays with the release maintainer (`scripts/release_signing.py`).
+- **What the signature covers:** version, release number, tag, installer file name, size and SHA-256. The installer is checked against size and hash after the download and again immediately before it runs.
+- **Replay:** a manifest counts only when its (version, release) pair is higher than the running one, so an older signed release is never installed over a newer one.
+- **Links:** every redirect hop must be HTTPS on a GitHub host from a fixed list. The download link is built from the signed tag and file name, both matched against fixed patterns.
+- **Not covered:** a stolen signing key. A second entry in `PUBLIC_KEYS` allows a planned key change, but a release signed with a stolen key is accepted until the app carries a new key list. The installer is not Authenticode-signed.
+
 ## Known Gaps
 
 These are open, acknowledged, and contributor help is welcome:

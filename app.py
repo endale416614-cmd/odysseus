@@ -1042,9 +1042,10 @@ async def serve_login(request: Request):
 
 @app.get("/api/version")
 async def get_version():
-    from core.constants import APP_BUILD_VERSION, APP_SOURCE_COMMIT, APP_VERSION
+    from core.constants import APP_BUILD_VERSION, APP_RELEASE, APP_SOURCE_COMMIT, APP_VERSION
     return {
         "version": APP_VERSION,
+        "release": str(APP_RELEASE),  # every value here is a string
         "build": APP_BUILD_VERSION,
         "source_commit": APP_SOURCE_COMMIT,
     }

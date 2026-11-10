@@ -21,7 +21,7 @@ described as a switch that turns something off, the read rejects `0`, `false`,
 `no` and `off` and treats everything else as on. The `Default` column is the
 value the code falls back to when the variable is unset, quoted from the source.
 
-The source tree reads **149** `ODYSSEUS_*` variables: 92 an operator may want to set, and 57 that are internal - sentinels, fixture switches, capture hooks and development tooling. The internal ones are listed too, in their own section, so this page can be checked against the source mechanically.
+The source tree reads **151** `ODYSSEUS_*` variables: 94 an operator may want to set, and 57 that are internal - sentinels, fixture switches, capture hooks and development tooling. The internal ones are listed too, in their own section, so this page can be checked against the source mechanically.
 
 > This page is generated. Edit `scripts/generate_env_reference.py` and
 > re-run it; `tests/test_env_reference.py` enforces that the committed page
@@ -36,6 +36,7 @@ The source tree reads **149** `ODYSSEUS_*` variables: 92 an operator may want to
 | `ODYSSEUS_ADMIN_PASSWORD` | `''` | `setup.py` (+2 more) | Password for the admin account created on first run. Setup refuses a value shorter than its minimum length rather than silently falling back. |
 | `ODYSSEUS_ADMIN_USER` | `''` | `setup.py` (+2 more) | Username for the admin account created on first run. Setup uses env vars first, then an interactive prompt, then a random password. |
 | `ODYSSEUS_ALLOW_OLLAMA_CLI_SCAN` | *unset* | `routes/cookbook_helpers.py` (+1 more) | On Windows only, set truthy to let the Cookbook dependency probe shell out to `ollama list`. Ignored on other platforms, where the scan always runs. |
+| `ODYSSEUS_AUTO_UPDATE` | `'1'` | `src/updater.py` | Set to 0, false, no or off to stop the packaged Windows app from downloading newer releases and installing them at the next start. Other installs never update themselves. |
 | `ODYSSEUS_CONTAINER_NETWORK_MODE` | `''` | `app.py` (+1 more) | Declares the container's Docker network mode. Set to `host` to skip host-gateway probing when discovering local model endpoints. |
 | `ODYSSEUS_ENABLE_HOST_DOCKER` | `''` | `src/host_docker_access.py` | Security-relevant. Must be exactly `true` before tools may use a mounted host Docker socket, and the socket itself must exist. |
 | `ODYSSEUS_INPROCESS_POLLERS` | `'1'` | `routes/email/email_pollers.py` | The same off switch for the in-process email pollers, when `odysseus-mail poll-scheduled` is the sole external driver. |
@@ -191,6 +192,12 @@ The source tree reads **149** `ODYSSEUS_*` variables: 92 an operator may want to
 | `ODYSSEUS_API_TOKEN` | `''` | `integrations/claude/skills/odysseus/scripts/odysseus_api.py` (+1 more) | API token those scripts authenticate with. Both this and the URL are required; the scripts name whichever is missing. |
 | `ODYSSEUS_URL` | `''` | `integrations/claude/skills/odysseus/scripts/odysseus_api.py` (+1 more) | Base URL of the Odysseus instance the bundled integration scripts call. |
 
+### Build and release metadata
+
+| Variable | Default | Read in | What it does |
+|---|---|---|---|
+| `ODYSSEUS_RELEASE_KEY_FILE` | `''` | `scripts/release_signing.py` | Path of the protected release signing key that `scripts/release_signing.py` creates and reads, in place of its default under `%APPDATA%`. Only release maintainers need it. |
+
 ## Internal and development-only variables
 
 Listed for completeness. Setting one of these on a real install is either a no-op or a way to break something quietly.
@@ -302,7 +309,7 @@ reads three ways, because no single pattern covers the codebase:
   lines, so one read lives inside a string literal.
 
 The three passes are not redundancy. A line-based grep for a direct
-`os.environ.get("ODYSSEUS_...` call finds 117 of the 149 variables on this
+`os.environ.get("ODYSSEUS_...` call finds 119 of the 151 variables on this
 page. What it misses is reads through an env-reader helper, reads whose call
 spans more than one line, reads whose variable name is held in a module
 constant, and reads through a mapping passed in as an argument - which is the

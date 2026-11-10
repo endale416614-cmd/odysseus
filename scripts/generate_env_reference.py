@@ -358,6 +358,18 @@ VARIABLE_NOTES: dict[str, tuple[str, str, str]] = {
         "Any non-empty value suppresses the interactive admin-credential prompt even "
         "on a TTY, for unattended installs.",
     ),
+    "ODYSSEUS_AUTO_UPDATE": (
+        "Deployment and first run", USER,
+        "Set to 0, false, no or off to stop the packaged Windows app from downloading "
+        "newer releases and installing them at the next start. Other installs never "
+        "update themselves.",
+    ),
+    "ODYSSEUS_RELEASE_KEY_FILE": (
+        "Build and release metadata", USER,
+        "Path of the protected release signing key that `scripts/release_signing.py` "
+        "creates and reads, in place of its default under `%APPDATA%`. Only release "
+        "maintainers need it.",
+    ),
     "ODYSSEUS_INPROCESS_TASKS": (
         "Deployment and first run", USER,
         "Set to 0, false, no or off to stop the in-process scheduled-task runner, for "
