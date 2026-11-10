@@ -957,6 +957,10 @@ def _prepare_windows_job(spec: ContainmentSpec) -> None:
     """Shield the app data, label the workspace, ensure the private shell copy."""
     from src import containment_win
     from src.constants import AGENT_SHELL_DIR
+    # The shell copy is made inside the shielded folder. Its folder must exist
+    # before the shield runs, or the copy inherits the no-read label and the
+    # first command cannot start its own shell.
+    os.makedirs(AGENT_SHELL_DIR, exist_ok=True)
     # Before anything runs: a command must never see the app's own state.
     containment_win.shield_app_data(*_app_data_layout())
     containment_win.prepare_workspace(spec.workspace)

@@ -233,6 +233,24 @@ async def test_m_a_workspace_inside_the_data_folder_stays_usable(_isolated_store
     assert (inner / "made.txt").exists()
 
 
+@WINDOWS_ONLY
+@pytest.mark.skipif(find_bash() is None, reason="Git Bash not installed")
+async def test_o_first_shell_command_runs_with_the_shell_copy_in_the_data_folder(
+        workspace, _isolated_store, monkeypatch):
+    """The shell copy is made inside the shielded folder on first use and must stay readable."""
+    from src import constants
+    data = _isolated_store
+    shell = data / "agent_shell"
+    monkeypatch.setattr(constants, "AGENT_SHELL_DIR", str(shell))
+    monkeypatch.setattr(containment, "_app_data_layout",
+                        lambda: (str(data), (str(data / "uploads"), str(shell))))
+    spec = containment.agent_spec(workspace, _env(), 60)
+    grant = containment.acquire(spec, owner="windows-test")
+    result = await containment.run(grant, "echo first-run-ok")
+    assert result.exit_code == 0, result.stderr
+    assert "first-run-ok" in result.stdout
+
+
 @pytest.fixture
 def native_tools(tmp_path, monkeypatch):
     """The real Bash and Python tools bound to a workspace, as a chat turn has them."""
