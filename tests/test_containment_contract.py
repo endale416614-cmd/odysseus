@@ -74,6 +74,12 @@ def spec_for(workspace, **kwargs):
 
 ALL = tuple(sorted(containment.DIMENSIONS))
 
+# The filesystem dimension this platform requires: the full one, or on Windows
+# its write half. There the full one is still asked about and reported degraded.
+FS = (containment.FILESYSTEM_WRITE if containment.FILESYSTEM_WRITE in containment.DEFAULT_REQUIRED
+      else containment.FILESYSTEM)
+ALSO_DEGRADED = () if FS == containment.FILESYSTEM else (containment.FILESYSTEM,)
+
 
 # ── The postcondition ───────────────────────────────────────────────────────
 @pytest.mark.parametrize("provided", [
@@ -97,7 +103,7 @@ def test_enforced_never_exceeds_what_the_spec_requested(monkeypatch, workspace):
     grant = containment.acquire(spec_for(workspace), owner="session-1")
     # network/memory/process_count were not asked for, so they are not enforced
     # even though the mechanism offers them.
-    assert grant.enforced == frozenset(containment.DEFAULT_REQUIRED)
+    assert grant.enforced == grant.spec.requested
     assert containment.NETWORK not in grant.enforced
     assert grant.degraded == ()
 
@@ -139,7 +145,7 @@ async def test_uncontainable_request_does_not_execute(monkeypatch, workspace, no
     assert "filesystem" in result["error"]
     assert result["containment"]["contained"] is False
     assert result["containment"]["executed"] is False
-    assert result["containment"]["unenforced_required"] == ["filesystem"]
+    assert result["containment"]["unenforced_required"] == [FS]
     # A run that could not be contained is distinguishable from a contained run
     # that failed: there is no output key at all, and `executed` is explicit.
     assert "output" not in result
@@ -154,7 +160,7 @@ def test_unavailable_names_every_missing_dimension_and_the_mechanism_tried(
     with pytest.raises(containment.ContainmentUnavailable) as caught:
         containment.acquire(spec, owner="session-1")
     assert caught.value.missing == frozenset({
-        containment.FILESYSTEM, containment.PROCESS_TREE,
+        FS, containment.PROCESS_TREE,
     })
     assert caught.value.mechanism_tried == "group_only"
     assert "containment unavailable" in str(caught.value)
@@ -206,10 +212,10 @@ def test_unavailable_best_effort_dimension_is_reported_not_refused(monkeypatch, 
     )
     grant = containment.acquire(spec, owner="session-1")
     assert grant.contained is True
-    assert grant.degraded == (containment.MEMORY, containment.NETWORK)
+    assert grant.degraded == (*ALSO_DEGRADED, containment.MEMORY, containment.NETWORK)
     # And it is reported as fact in the model-visible block, never as permission.
     block = grant.to_dict()
-    assert block["degraded"] == ["memory", "network"]
+    assert block["degraded"] == [*ALSO_DEGRADED, "memory", "network"]
     assert block["contained"] is True
     assert "env" not in block
 
@@ -300,7 +306,7 @@ def test_the_boundary_does_not_depend_on_the_command(monkeypatch, workspace, com
     spec = containment.agent_spec(workspace, {}, 5)
     grant = containment.acquire(spec, owner="session-1")
     assert grant.mechanism == "fake"
-    assert grant.enforced == frozenset(containment.DEFAULT_REQUIRED)
+    assert grant.enforced == grant.spec.requested
     assert "command" not in grant.to_dict()
 
 
@@ -319,10 +325,10 @@ def test_report_only_records_the_shortfall_instead_of_refusing(monkeypatch, work
         "group_only", 10, {containment.PROCESS_TREE, containment.WALL_CLOCK},
     ))
     grant = containment.acquire(containment.agent_spec(workspace, {}, 5), owner="s")
-    assert grant.unenforced_required == ("filesystem",)
+    assert grant.unenforced_required == (FS,)
     assert grant.contained is False
     assert grant.mode == containment.MODE_REPORT_ONLY
-    assert grant.to_dict()["unenforced_required"] == ["filesystem"]
+    assert grant.to_dict()["unenforced_required"] == [FS]
 
 
 def test_report_only_logs_the_shortfall_once_per_grant(monkeypatch, workspace, caplog):

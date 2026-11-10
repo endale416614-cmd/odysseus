@@ -91,9 +91,13 @@ WALL_CLOCK = "wall_clock"
 NETWORK = "network"
 MEMORY = "memory"
 PROCESS_COUNT = "process_count"
+#: Writes are confined to the workspace; reads are not. Weaker than
+#: FILESYSTEM and never reported as it. It is the only filesystem dimension
+#: the Windows mechanism can establish without breaking developer tools.
+FILESYSTEM_WRITE = "filesystem_write"
 
 DIMENSIONS = frozenset({
-    FILESYSTEM, PROCESS_TREE, WALL_CLOCK, NETWORK, MEMORY, PROCESS_COUNT,
+    FILESYSTEM, FILESYSTEM_WRITE, PROCESS_TREE, WALL_CLOCK, NETWORK, MEMORY, PROCESS_COUNT,
 })
 
 #: What every model-reachable spawn must have. Filesystem scope and an
@@ -102,7 +106,10 @@ DIMENSIONS = frozenset({
 #: count stay best-effort until mechanisms for them exist on every platform
 #: (Waves 5A/5B), because requiring a dimension no mechanism provides refuses
 #: every command on every host.
-DEFAULT_REQUIRED = frozenset({FILESYSTEM, PROCESS_TREE, WALL_CLOCK})
+# On Windows the filesystem requirement is its write half: see containment_win.
+DEFAULT_REQUIRED = frozenset({
+    FILESYSTEM_WRITE if IS_WINDOWS else FILESYSTEM, PROCESS_TREE, WALL_CLOCK,
+})
 
 NETWORK_INHERIT = "inherit"
 NETWORK_NONE = "none"
@@ -212,6 +219,11 @@ class ContainmentSpec:
         spec everything the spec wanted.
         """
         asked = {FILESYSTEM, PROCESS_TREE, WALL_CLOCK}
+        # The write half is asked about exactly when the spec requires it (the
+        # Windows default). The full dimension stays asked about too, so it is
+        # reported as degraded there instead of silently missing.
+        if FILESYSTEM_WRITE in self.required:
+            asked.add(FILESYSTEM_WRITE)
         if self.network == NETWORK_NONE:
             asked.add(NETWORK)
         if self.max_memory_bytes is not None:
@@ -409,6 +421,20 @@ def _windows_provides(spec: ContainmentSpec) -> frozenset[str]:
     return frozenset({WALL_CLOCK})
 
 
+WINDOWS_JOB = "windows_job"
+
+
+def _windows_job_provides(spec: ContainmentSpec) -> frozenset[str]:
+    # The launcher's Job Object takes every descendant down with it, so ending
+    # the launcher at the wall clock ends the tree. Writes are confined only
+    # where the workspace volume can hold integrity labels.
+    from src import containment_win
+    provided = {PROCESS_TREE, WALL_CLOCK}
+    if containment_win.supports_write_boundary(spec.workspace):
+        provided.add(FILESYSTEM_WRITE)
+    return frozenset(provided)
+
+
 #: Strongest first. Selection walks this in order and stops at the first
 #: mechanism that covers ``spec.required``; if none does, the strongest
 #: available one is used and the shortfall is reported (or raised, under
@@ -417,6 +443,7 @@ def _windows_provides(spec: ContainmentSpec) -> frozenset[str]:
 MECHANISMS: tuple[Mechanism, ...] = (
     Mechanism("bubblewrap", 30, _bwrap_available, _bwrap_provides),
     Mechanism("process_group", 20, _posix_group_available, _posix_group_provides),
+    Mechanism(WINDOWS_JOB, 15, _windows_available, _windows_job_provides),
     Mechanism("windows_tree", 10, _windows_available, _windows_provides),
 )
 
@@ -910,6 +937,48 @@ def _rlimit_preexec(grant: ContainmentGrant) -> Optional[Callable[[], None]]:
     return _apply
 
 
+def _app_data_layout() -> tuple[str, tuple[str, ...]]:
+    """The data folder to hide from contained commands, and the parts they may read.
+
+    The readable parts mirror what the file tools may reach, plus the private
+    shell copy that the commands themselves run from.
+    """
+    from src.constants import (
+        AGENT_SHELL_DIR, AGENT_WORKSPACE_DIR, DATA_DIR, MAIL_ATTACHMENTS_DIR,
+        PERSONAL_DIR, PERSONAL_UPLOADS_DIR, UPLOAD_DIR,
+    )
+    return DATA_DIR, (
+        AGENT_WORKSPACE_DIR, UPLOAD_DIR, MAIL_ATTACHMENTS_DIR, PERSONAL_DIR,
+        PERSONAL_UPLOADS_DIR, AGENT_SHELL_DIR,
+    )
+
+
+def _prepare_windows_job(spec: ContainmentSpec) -> None:
+    """Shield the app data, label the workspace, ensure the private shell copy."""
+    from src import containment_win
+    from src.constants import AGENT_SHELL_DIR
+    # Before anything runs: a command must never see the app's own state.
+    containment_win.shield_app_data(*_app_data_layout())
+    containment_win.prepare_workspace(spec.workspace)
+    bash = find_bash()
+    if bash:
+        containment_win.private_shell(bash, AGENT_SHELL_DIR)
+
+
+def _windows_job_argv(spec: ContainmentSpec, parts: list[str], *, shell_command: bool) -> list[str]:
+    """Wrap ``parts`` in the Windows launcher, using the private shell copy."""
+    from src import containment_win
+    from src.constants import AGENT_ISOLATED_TMP_DIRNAME, AGENT_SHELL_DIR
+    bin_dir = ""
+    bash = find_bash()
+    if bash:
+        private_bash, bin_dir = containment_win.private_shell(bash, AGENT_SHELL_DIR)
+        if shell_command:
+            parts = [private_bash, *parts[1:]]
+    tmp_dir = os.path.join(spec.workspace, AGENT_ISOLATED_TMP_DIRNAME)
+    return containment_win.launcher_argv(sys.executable, tmp_dir, parts, path_first=bin_dir)
+
+
 def _launch_argv(grant: ContainmentGrant, command: Any, *, argv: bool,
                  ready_marker: Optional[str] = None, info_fd: Optional[int] = None) -> list[str]:
     spec = grant.spec
@@ -943,6 +1012,8 @@ def _launch_argv(grant: ContainmentGrant, command: Any, *, argv: bool,
                      "ody-boundary", ready_marker, *parts]
         info_args = ["--info-fd", str(info_fd)] if info_fd is not None else []
         return _bwrap_prefix(spec) + info_args + parts
+    if grant.mechanism == WINDOWS_JOB:
+        return _windows_job_argv(spec, parts, shell_command=not argv)
     return parts
 
 
@@ -951,7 +1022,11 @@ def _spawn_kwargs(grant: ContainmentGrant) -> dict[str, Any]:
     if IS_WINDOWS:
         # No setsid; the child gets its own group so a console event cannot
         # reach it, and teardown walks the tree with taskkill /T.
-        kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+        flags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x00000200)
+        if grant.mechanism == WINDOWS_JOB:
+            # The launcher owns one hidden console that the command inherits.
+            flags |= getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+        kwargs["creationflags"] = flags
         return kwargs
     # A separate group makes ordinary tree teardown possible. The PID
     # namespace, not setsid, prevents descendants from escaping containment.
@@ -1042,6 +1117,9 @@ async def run(
         if marker is not None:
             info_read, info_write = os.pipe()
             os.set_blocking(info_read, False)
+        if grant.mechanism == WINDOWS_JOB:
+            # Labelling a large tree and the first shell copy can take seconds.
+            await asyncio.to_thread(_prepare_windows_job, spec)
         launch = _launch_argv(grant, command, argv=argv, ready_marker=marker, info_fd=info_write)
         spawn_kwargs = _spawn_kwargs(grant)
         if info_write is not None:

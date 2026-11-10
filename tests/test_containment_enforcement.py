@@ -50,8 +50,9 @@ def test_installed_but_nonfunctional_bwrap_is_not_available(monkeypatch):
 ])
 async def test_shipped_mode_refuses_without_namespaces(tool, source, workspace, monkeypatch):
     assert containment.CONTAINMENT_MODE == containment.MODE_ENFORCING
+    # Neither real boundary is available; only the weak fallbacks remain.
     monkeypatch.setattr(containment, "MECHANISMS", tuple(
-        item for item in containment.MECHANISMS if item.name != "bubblewrap"
+        item for item in containment.MECHANISMS if item.name not in ("bubblewrap", containment.WINDOWS_JOB)
     ))
     async def forbidden(*args, **kwargs):
         pytest.fail("uncontained model command spawned")
@@ -60,7 +61,8 @@ async def test_shipped_mode_refuses_without_namespaces(tool, source, workspace, 
     assert "containment unavailable" in result["error"]
     assert result["containment"]["executed"] is False
     assert result["containment"]["contained"] is False
-    assert {"filesystem", "process_tree"} <= set(result["containment"]["unenforced_required"])
+    filesystem = next(d for d in containment.DEFAULT_REQUIRED if d.startswith("filesystem"))
+    assert {filesystem, "process_tree"} <= set(result["containment"]["unenforced_required"])
 
 
 def test_process_groups_and_taskkill_do_not_claim_tree_containment(workspace):

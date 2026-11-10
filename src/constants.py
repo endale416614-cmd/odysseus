@@ -113,6 +113,8 @@ def mcp_stderr_log_file() -> str:
 # Everything else under DATA_DIR is application state (session store, auth
 # database, encryption key, settings), and the agent has no business reading it.
 AGENT_WORKSPACE_DIR = os.path.join(DATA_DIR, "agent_workspace")
+# Private copy of the Git Bash runtime used by contained commands on Windows.
+AGENT_SHELL_DIR = os.path.join(DATA_DIR, "agent_shell")
 
 # Paths with an intentional dedicated env override, defaulting under DATA_DIR.
 MAIL_ATTACHMENTS_DIR = os.getenv("ODYSSEUS_MAIL_ATTACHMENTS_DIR", os.path.join(DATA_DIR, "mail-attachments"))
