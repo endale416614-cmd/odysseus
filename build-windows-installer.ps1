@@ -82,7 +82,7 @@ $releaseMatch = [regex]::Match($constants, '(?m)^APP_RELEASE\s*=\s*(\d+)')
 if (-not $releaseMatch.Success) { Fail "APP_RELEASE not found in src\constants.py." }
 $release = $releaseMatch.Groups[1].Value
 $keyFile = $env:ODYSSEUS_RELEASE_KEY_FILE
-if (-not $keyFile) { $keyFile = Join-Path $env:APPDATA "Odysseus-Release\update-signing.key" }
+if (-not $keyFile) { $keyFile = Join-Path $env:USERPROFILE ".odysseus-release\update-signing.key" }
 if (Test-Path $keyFile) {
     $py = Join-Path $PSScriptRoot ".venv\Scripts\python.exe"
     if (-not (Test-Path $py)) { $py = "python" }

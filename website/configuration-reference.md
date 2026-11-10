@@ -196,7 +196,7 @@ The source tree reads **151** `ODYSSEUS_*` variables: 94 an operator may want to
 
 | Variable | Default | Read in | What it does |
 |---|---|---|---|
-| `ODYSSEUS_RELEASE_KEY_FILE` | `''` | `scripts/release_signing.py` | Path of the protected release signing key that `scripts/release_signing.py` creates and reads, in place of its default under `%APPDATA%`. Only release maintainers need it. |
+| `ODYSSEUS_RELEASE_KEY_FILE` | `''` | `scripts/release_signing.py` | Path of the protected release signing key that `scripts/release_signing.py` creates and reads, in place of its default in the user profile. Only release maintainers need it. |
 
 ## Internal and development-only variables
 

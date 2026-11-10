@@ -32,7 +32,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 def key_file() -> str:
     override = os.environ.get("ODYSSEUS_RELEASE_KEY_FILE", "").strip()
-    return override or os.path.join(os.environ["APPDATA"], "Odysseus-Release", "update-signing.key")
+    # In the profile folder, not under AppData: a packaged terminal or editor
+    # redirects AppData into its own cache, where the key would be lost with it.
+    return override or os.path.join(os.path.expanduser("~"), ".odysseus-release", "update-signing.key")
 
 
 class _Blob(ctypes.Structure):

@@ -367,7 +367,7 @@ VARIABLE_NOTES: dict[str, tuple[str, str, str]] = {
     "ODYSSEUS_RELEASE_KEY_FILE": (
         "Build and release metadata", USER,
         "Path of the protected release signing key that `scripts/release_signing.py` "
-        "creates and reads, in place of its default under `%APPDATA%`. Only release "
+        "creates and reads, in place of its default in the user profile. Only release "
         "maintainers need it.",
     ),
     "ODYSSEUS_INPROCESS_TASKS": (
