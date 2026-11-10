@@ -793,10 +793,11 @@ def _probe_reply_text(resp) -> str:
     """Reply text from a successful completion response (OpenAI, Ollama or Anthropic shape)."""
     try:
         body = resp.json()
-        if body.get("choices"):
-            return (body["choices"][0].get("message", {}).get("content") or "").strip()
-        if isinstance(body.get("message"), dict):
-            return (body["message"].get("content") or "").strip()
+        message = body["choices"][0].get("message", {}) if body.get("choices") else body.get("message")
+        if isinstance(message, dict):
+            # A thinking model can spend the few probe tokens on its reasoning and leave the answer empty.
+            return next((str(message[k]).strip() for k in ("content", "reasoning", "reasoning_content", "thinking")
+                         if message.get(k)), "")
         return "".join(b.get("text", "") for b in body.get("content") or [] if isinstance(b, dict)).strip()
     except Exception:
         return ""

@@ -2218,3 +2218,23 @@ def test_manual_refresh_timeout_keeps_cached_models_and_warns(monkeypatch):
     assert db.commits == 0
     assert response.headers["X-Model-Refresh-Status"] == "failed"
     assert "kept cached models" in response.headers["X-Model-Refresh-Warning"]
+
+
+class TestProbeReplyText:
+    """The reply text of a probe, which first-run setup uses as proof that the model answers."""
+
+    @staticmethod
+    def _text(body):
+        return model_routes._probe_reply_text(SimpleNamespace(json=lambda: body))
+
+    def test_answer_text_is_used(self):
+        assert self._text({"choices": [{"message": {"content": " OK ", "reasoning": "thinking"}}]}) == "OK"
+
+    def test_thinking_model_that_spent_its_tokens_on_reasoning_still_counts(self):
+        assert self._text({"choices": [{"message": {"content": "", "reasoning": "Okay, the"}}]}) == "Okay, the"
+        assert self._text({"message": {"content": "", "thinking": "Let me"}}) == "Let me"
+
+    def test_no_text_at_all_is_empty(self):
+        assert self._text({"choices": [{"message": {"content": ""}}]}) == ""
+        assert self._text({"content": [{"type": "text", "text": "OK"}]}) == "OK"
+        assert self._text("not a mapping") == ""
