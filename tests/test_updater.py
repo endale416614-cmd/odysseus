@@ -426,6 +426,84 @@ def test_sign_writes_manifest_the_app_accepts(tmp_path, monkeypatch):
     assert manifest["tag"] == "v1.0.3-setup.3"
 
 
+BACKUP_PASSPHRASE = "a passphrase used only by this test"
+
+
+def _key_with_backup(tmp_path, monkeypatch):
+    """A fresh key in the test folder and its backup. Returns (module, public key, key path, backup path)."""
+    key_path = tmp_path / "key.bin"
+    monkeypatch.setenv("ODYSSEUS_RELEASE_KEY_FILE", str(key_path))
+    signing = _load_signing()
+    public = signing.keygen()
+    copy = tmp_path / "backup.pem"
+    signing.backup(str(copy), BACKUP_PASSPHRASE)
+    return signing, public, key_path, copy
+
+
+@WINDOWS_ONLY
+def test_backup_restores_the_same_key_without_the_key_file(tmp_path, monkeypatch):
+    signing, public, key_path, copy = _key_with_backup(tmp_path, monkeypatch)
+    secret = signing._dpapi(key_path.read_bytes(), protect=False)
+    text = copy.read_bytes()
+    assert text.startswith(b"-----BEGIN ENCRYPTED PRIVATE KEY-----")
+    assert secret not in text
+    with pytest.raises(TypeError):  # it does not open without a passphrase
+        serialization.load_pem_private_key(text, password=None)
+    key_path.unlink()  # as after the Windows account is gone
+    assert signing.restore(str(copy), BACKUP_PASSPHRASE) == public
+    assert signing._public_text(signing._load_key()) == public
+
+
+@WINDOWS_ONLY
+def test_restore_refuses_a_wrong_passphrase(tmp_path, monkeypatch):
+    signing, _, key_path, copy = _key_with_backup(tmp_path, monkeypatch)
+    key_path.unlink()
+    with pytest.raises(SystemExit):
+        signing.restore(str(copy), "some other passphrase")
+    assert not key_path.exists()
+
+
+@WINDOWS_ONLY
+def test_backup_and_restore_never_overwrite(tmp_path, monkeypatch):
+    signing, _, key_path, copy = _key_with_backup(tmp_path, monkeypatch)
+    key_before, copy_before = key_path.read_bytes(), copy.read_bytes()
+    with pytest.raises(SystemExit):
+        signing.backup(str(copy), BACKUP_PASSPHRASE)
+    with pytest.raises(SystemExit):
+        signing.restore(str(copy), BACKUP_PASSPHRASE)
+    assert key_path.read_bytes() == key_before
+    assert copy.read_bytes() == copy_before
+
+
+@WINDOWS_ONLY
+def test_backup_and_restore_commands_ask_for_the_passphrase(tmp_path, monkeypatch, capsys):
+    key_path = tmp_path / "key.bin"
+    monkeypatch.setenv("ODYSSEUS_RELEASE_KEY_FILE", str(key_path))
+    signing = _load_signing()
+    public = signing.keygen()
+    copy = tmp_path / "backup.pem"
+    entries = iter([BACKUP_PASSPHRASE, "a different second entry"])
+    monkeypatch.setattr(signing.getpass, "getpass", lambda prompt: next(entries))
+    with pytest.raises(SystemExit):
+        signing.main(["backup", str(copy)])
+    assert not copy.exists()
+    monkeypatch.setattr(signing.getpass, "getpass", lambda prompt: BACKUP_PASSPHRASE)
+    assert signing.main(["backup", str(copy)]) == 0
+    key_path.unlink()
+    assert signing.main(["restore", str(copy)]) == 0
+    assert public in capsys.readouterr().out
+
+
+@WINDOWS_ONLY
+def test_backup_refuses_a_short_passphrase(tmp_path, monkeypatch):
+    monkeypatch.setenv("ODYSSEUS_RELEASE_KEY_FILE", str(tmp_path / "key.bin"))
+    signing = _load_signing()
+    signing.keygen()
+    with pytest.raises(SystemExit):
+        signing.backup(str(tmp_path / "backup.pem"), "short")
+    assert not (tmp_path / "backup.pem").exists()
+
+
 @WINDOWS_ONLY
 def test_sign_refuses_when_app_key_differs(tmp_path, monkeypatch):
     monkeypatch.setenv("ODYSSEUS_RELEASE_KEY_FILE", str(tmp_path / "key.bin"))

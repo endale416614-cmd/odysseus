@@ -12,12 +12,20 @@ carries only the public key: ``PUBLIC_KEYS`` in ``src/updater.py``.
 Publish both with the installer in a full release tagged ``v<version>-setup.<release>``.
 
 Only this Windows account on this computer can read the key file, so a copy of
-it is not a backup. If the account is lost, the key is lost: existing installs
-then need one manual install of a release signed with a new key.
+it is not a backup. Make one that works anywhere, and keep it off this computer:
+
+    python scripts/release_signing.py backup E:/odysseus-update-key.pem
+    python scripts/release_signing.py restore E:/odysseus-update-key.pem
+
+``backup`` asks for a passphrase and writes the key encrypted with it.
+``restore`` stores that key for the Windows account that runs it. Without the
+key and without a backup, existing installs need one manual install of a
+release signed with a new key.
 """
 import argparse
 import base64
 import ctypes
+import getpass
 import hashlib
 import json
 import os
@@ -28,6 +36,9 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# The backup is only as strong as its passphrase.
+MIN_PASSPHRASE = 12
 
 
 def key_file() -> str:
@@ -75,17 +86,55 @@ def _public_text(key: Ed25519PrivateKey) -> str:
     return base64.b64encode(raw).decode("ascii")
 
 
-def keygen() -> str:
-    """Create the key, store it protected, and return the public key text."""
-    path = key_file()
-    if os.path.exists(path):
-        raise SystemExit(f"A signing key already exists at {path}. It was left alone.")
-    key = Ed25519PrivateKey.generate()
+def _refuse_existing_key() -> None:
+    if os.path.exists(key_file()):
+        raise SystemExit(f"A signing key already exists at {key_file()}. It was left alone.")
+
+
+def _store_key(key: Ed25519PrivateKey) -> None:
+    """Write ``key`` to the key file, protected for this Windows account. Never overwrites."""
+    _refuse_existing_key()
     secret = key.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw,
                                serialization.NoEncryption())
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "xb") as handle:
+    os.makedirs(os.path.dirname(key_file()), exist_ok=True)
+    with open(key_file(), "xb") as handle:
         handle.write(_dpapi(secret, protect=True))
+
+
+def keygen() -> str:
+    """Create the key, store it protected, and return the public key text."""
+    key = Ed25519PrivateKey.generate()
+    _store_key(key)
+    return _public_text(key)
+
+
+def backup(target: str, passphrase: str) -> None:
+    """Write the key to ``target``, encrypted with ``passphrase``. The file opens on any computer."""
+    if len(passphrase) < MIN_PASSPHRASE:
+        raise SystemExit(f"The passphrase needs at least {MIN_PASSPHRASE} characters. Nothing was written.")
+    pem = _load_key().private_bytes(
+        serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+        serialization.BestAvailableEncryption(passphrase.encode("utf-8")),
+    )
+    try:
+        with open(target, "xb") as handle:
+            handle.write(pem)
+    except FileExistsError:
+        raise SystemExit(f"{target} already exists. It was left alone.") from None
+
+
+def restore(source: str, passphrase: str) -> str:
+    """Store the key from a backup as this account's signing key. Returns the public key text."""
+    _refuse_existing_key()
+    with open(source, "rb") as handle:
+        data = handle.read()
+    try:
+        key = serialization.load_pem_private_key(data, password=passphrase.encode("utf-8"))
+    except (ValueError, TypeError):
+        raise SystemExit("The backup could not be opened: wrong passphrase, or not a key backup.") from None
+    if not isinstance(key, Ed25519PrivateKey):
+        raise SystemExit("The backup does not hold a release signing key.")
+    _store_key(key)
     return _public_text(key)
 
 
@@ -125,12 +174,28 @@ def main(argv: list[str] | None = None) -> int:
     sign_args.add_argument("installer")
     sign_args.add_argument("--version", required=True)
     sign_args.add_argument("--release", required=True, type=int)
+    backup_args = commands.add_parser("backup", help="write a passphrase-protected copy of the key")
+    backup_args.add_argument("file")
+    restore_args = commands.add_parser("restore", help="store the key from a backup for this Windows account")
+    restore_args.add_argument("file")
     args = parser.parse_args(argv)
     if args.command == "keygen":
         print(keygen())
         print("Put this public key into PUBLIC_KEYS in src/updater.py.", file=sys.stderr)
     elif args.command == "public":
         print(_public_text(_load_key()))
+    elif args.command == "backup":
+        passphrase = getpass.getpass("Passphrase for the backup: ")
+        if passphrase != getpass.getpass("Repeat the passphrase: "):
+            raise SystemExit("The two entries differ. Nothing was written.")
+        backup(args.file, passphrase)
+        print(f"Backup written to {args.file}. It cannot be opened without the passphrase.")
+    elif args.command == "restore":
+        public = restore(args.file, getpass.getpass("Passphrase of the backup: "))
+        from src import updater
+        print(public)
+        print("This key is in PUBLIC_KEYS: installed copies accept its releases." if public in updater.PUBLIC_KEYS
+              else "This key is NOT in PUBLIC_KEYS of this checkout.", file=sys.stderr)
     else:
         print(sign(args.installer, args.version, args.release))
     return 0
